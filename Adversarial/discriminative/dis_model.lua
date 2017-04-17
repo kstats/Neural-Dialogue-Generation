@@ -19,6 +19,7 @@ function model:Initial(params)
     self.lstms_sen=self:g_cloneManyTimes(self.lstm_sen,5);
     self.store_sen={}
     self.softmax =self:softmax_()
+    --Documentation for nn modules : https://github.com/torch/nn/blob/master/doc/module.md
     self.Modules={};
     self.Modules[#self.Modules+1]=self.lstm_word
     self.Modules[#self.Modules+1]=self.lstm_sen
@@ -87,31 +88,47 @@ function model:saveParams()
     file:close()
 end
 
+--This is a good, simple model example in Lua (https://github.com/torch/nn/blob/master/doc/training.md)
 function model:model_forward()
     self.last={}
+    --The # symbol in lua means "length".  So, this goes through each item in the batch 
     for i=1,#self.Word_s do
         for t=1,self.Word_s[i]:size(2)do
+            --I think this is the input to the encoding representation (word by word)
             local input={};
             if t==1 then
+                --For each layer of the LSTMS (default = 0)
                 for ll=1,self.params.layers do
+                    --Inserts 0's as lstm input for the first word in the sentence
                     table.insert(input,torch.zeros(self.Word_s[i]:size(1),self.params.dimension):cuda());
                     table.insert(input,torch.zeros(self.Word_s[i]:size(1),self.params.dimension):cuda());
                 end
+            --We are not in the first word here (i.e. we have generated at least one word)
             else
+                --I think these are different names for the same thing - output vs store_word
                 if self.mode=="train" then
                     input=self:clone_(self.store_word[i][t-1]);
                 else input=self:clone_(output);
                 end
             end
+            --Great article on the select functionality "http://emmanueloga.com/2010/12/09/lua-select.html"
+            --TODO: find out why they are choosing the second one.....
             table.insert(input,self.Word_s[i]:select(2,t));
             if self.mode=="train" then
+                --This sets the mode of the Module (or sub-modules) to train=true. This is useful for modules like Dropout or BatchNormalization that have a different behaviour during training vs evaluation.
                 self.lstms_word[i][t]:training()
+                -- Takes an input object, and computes the corresponding output of the module. 
                 output=self.lstms_word[i][t]:forward(input);
+            --If we are not in training mode...
             else
+                --This sets the mode of the Module (or sub-modules) to train=false.
                 self.lstms_word[i][1]:evaluate()
+                --runs the model forward
                 output=self.lstms_word[i][1]:forward(input);
             end
+            --If we are at the end of the input (mask values are starting)
             if self.Mask_s[i][t]:nDimension()~=0 then
+                --
                 for k=1,#output do
                     output[k]:indexCopy(1,self.Mask_s[i][t],torch.zeros(self.Mask_s[i][t]:size(1),self.params.dimension):cuda());
                 end
@@ -122,6 +139,7 @@ function model:model_forward()
             self.last[i]=output[2*self.params.layers-1]
         end
     end
+    --goes through each item in the batch
     for t=1,#self.Word_s do
         local input={};
         if t==1 then
