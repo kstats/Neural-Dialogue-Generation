@@ -154,6 +154,7 @@ function model:model_forward()
             end
         end
         table.insert(input,self.last[t]);
+        --this changes the value of "isTraining" and computes the forward LSTM pass
         if self.mode=="train" then
             self.lstms_sen[t]:training()
             output=self.lstms_sen[t]:forward(input);
@@ -161,9 +162,12 @@ function model:model_forward()
             self.lstms_sen[1]:evaluate()
             output=self.lstms_sen[1]:forward(input);
         end
+        --If we have reached the last word in the output, we need to output the classification
         if t==#self.Word_s then
+            --This computes the softmax
             self.softmax_h=output[2*self.params.layers-1]   
         end
+        --TODO: Not sure why we need to store the sentence again...
         self.store_sen[t]=self:clone_(output);
     end
 end
@@ -172,7 +176,11 @@ function model:model_backward()
     local softmax_output=self.softmax:forward({self.softmax_h,self.labels});
     --print(1/math.exp(-softmax_output[1]))
     if self.mode=="train" then
+        --softmax's backward function, which computes gradients.
+        --It has to take in the same input that the forward() pass took in 
+        --TODO figure out this cuda() function
         local dh=self.softmax:backward({self.softmax_h,self.labels},{torch.Tensor({1}):cuda(),torch.Tensor(softmax_output[2]:size()):fill(0):cuda()})
+        --placeholders for TODO
         local d_words={};
         local d_output={};
         for ll=1,self.params.layers do
