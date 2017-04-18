@@ -183,12 +183,19 @@ function model:model_backward()
         --placeholders for TODO
         local d_words={};
         local d_output={};
+        --inserts 0's for placeolders
         for ll=1,self.params.layers do
             table.insert(d_output,torch.zeros(self.Word_s[1]:size(1),self.params.dimension):cuda());
             table.insert(d_output,torch.zeros(self.Word_s[1]:size(1),self.params.dimension):cuda());
         end
+        --The parameters after the # are for the for loop syntax, which is as follows:
+        --for var1,var2,var3.  It executes until var1 == var2 while using var3 to change var1.
+        --So, t is decremented until 1.  Practically, this loops backwards (which we need for backprop)
+        --TODO: I think this backprops for each timestep for the internal representation
         for t=#self.Word_s,1,-1 do
             local input={};
+            --if we are at the very first word, insert placeholder of 0
+            --TODO: What is the intuition?
             if t==1 then
                 for ll=1,self.params.layers do
                     table.insert(input,torch.zeros(self.Word_s[1]:size(1),self.params.dimension):cuda())
@@ -199,17 +206,24 @@ function model:model_backward()
             end
             table.insert(input,self.last[t]);
             local d_store_t=self:clone_(d_output);
+            --If we are at the very end of the sentence...
             if t==#self.Word_s then
                 d_store_t[2*self.params.layers-1]:add(dh[1]);
             end
+            --This is backpropping through each time step.  Derivative of the input.
             d_input=self.lstms_sen[t]:backward(input,d_store_t)
+            --This for loop by default increases 1 until it reaches the second argument, 2*param layers
             for i=1,2*self.params.layers do
                 d_output[i]=copy(d_input[i]);
             end
+            --TODO: what does this do?
             d_words[t]=copy(d_input[2*self.params.layers+1]);
         end
+        --For each batch
+        --TODO: I think this backprops for the input to the net (embedding layer)
         for i=1,#self.Word_s do
             local d_output={};
+            --placeholders.
             for ll=1,self.params.layers do
                 table.insert(d_output,torch.zeros(self.Word_s[1]:size(1),self.params.dimension):cuda());
                 table.insert(d_output,torch.zeros(self.Word_s[1]:size(1),self.params.dimension):cuda());
@@ -236,6 +250,7 @@ function model:model_backward()
             end
         end
     end
+    --TODO: I think this is the output, but I am not sure.
     return softmax_output[2],1/math.exp(-softmax_output[1][1])
 end
 
@@ -252,6 +267,7 @@ function model:softmax_()
 end
 
 function model:g_cloneManyTimes(net, T)
+    --These nets share parameters
     local clones = {}
     for t=1,T do
         clones[t]=net:clone('weight','bias','gradWeight', 'gradBias');
